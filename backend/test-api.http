@@ -1,0 +1,61 @@
+### Health Check
+GET http://localhost:8000/health
+
+### Test 1: Evaluate LOW RISK Action (AUTONOMOUS)
+POST http://localhost:8000/api/v1/actions/evaluate
+Content-Type: application/json
+
+{
+  "agent_id": "agent-001",
+  "operation": "read",
+  "target_table": "customers",
+  "condition": "id = 10",
+  "record_count": 1,
+  "data_category": "customer",
+  "llm_confidence": 0.9,
+  "validation_score": 0.9,
+  "parameters": {}
+}
+
+### Test 2: Evaluate MEDIUM RISK Action (CONFIRM)
+POST http://localhost:8000/api/v1/actions/evaluate
+Content-Type: application/json
+
+{
+  "agent_id": "agent-002",
+  "operation": "update",
+  "target_table": "customers",
+  "condition": "id = 10",
+  "record_count": 1,
+  "data_category": "customer",
+  "llm_confidence": 0.8,
+  "validation_score": 0.8,
+  "parameters": {
+    "set": {"email": "new@email.com"}
+  }
+}
+
+### Test 3: Evaluate HIGH RISK Action (REVIEW)
+POST http://localhost:8000/api/v1/actions/evaluate
+Content-Type: application/json
+
+{
+  "agent_id": "agent-003",
+  "operation": "bulk_delete",
+  "target_table": "customers",
+  "condition": "country = 'India'",
+  "record_count": 10000,
+  "data_category": "customer",
+  "llm_confidence": 0.3,
+  "validation_score": 0.3,
+  "parameters": {}
+}
+
+### Test 4: View Pending Confirmations
+GET http://localhost:8000/api/v1/actions/pending-confirmations
+
+### Test 5: View Pending Reviews
+GET http://localhost:8000/api/v1/reviews/pending
+
+### Test 6: View Audit Logs
+GET http://localhost:8000/api/v1/audit?limit=10
