@@ -11,6 +11,7 @@ from app.database import get_db
 from app.services.agent_service import AgentService
 from app.services.db_service import DatabaseService
 from app.core.action_executor import ActionExecutor
+from app.core.security import get_current_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,8 @@ class AgentResponse(BaseModel):
 @router.post("/chat", response_model=AgentResponse)
 async def chat_with_agent(
     request: AgentRequest,
-    session: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_db),
+    api_key: str = Depends(get_current_api_key)  # Add API key auth
 ):
     """
     Chat with an AI agent via natural language.
@@ -53,8 +55,8 @@ async def chat_with_agent(
         action_executor = ActionExecutor()
         
         # Use mock provider by default (no API key needed)
-        # If user wants a different provider, use the one from request
-        provider = request.provider if request.provider != "mock" else "mock"
+        provider = request.provider if request.provider else "mock"
+        logger.info(f"Using provider: {provider}")
         
         # Process the request
         result = await agent_service.process_request(
