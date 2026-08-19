@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Security
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
-from app.core.metrics import track_action, track_risk
+from app.core.metrics import track_action, track_risk, track_request
 from app.database import get_db
 from app.schemas.action import ActionRequest, ActionResponse, ConfirmRequest
 from app.services.risk_service import RiskService
