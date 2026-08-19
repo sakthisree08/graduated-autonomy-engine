@@ -1,7 +1,7 @@
 """
 Graduated Autonomy Engine - Main Application
 """
-from app.api.routes import actions, reviews, audit, health, agent, keys, calibration
+
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, status
@@ -9,14 +9,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.database import engine, Base
-from app.api.routes import actions, reviews, audit, health, agent, keys
+from app.api.routes import actions, reviews, audit, health, agent, keys, calibration
 from app.core.security import get_current_api_key, check_rate_limit
+from app.core.logging_config import setup_logging
+from app.core.middleware import MonitoringMiddleware
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+# Setup logging
+setup_logging(log_level="INFO")
 logger = logging.getLogger(__name__)
 
 
@@ -44,6 +43,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Add monitoring middleware
+app.add_middleware(MonitoringMiddleware)
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
@@ -60,8 +62,8 @@ app.include_router(audit.router)
 app.include_router(health.router)
 app.include_router(keys.router)
 app.include_router(agent.router)
-
 app.include_router(calibration.router)
+
 
 # Health check endpoint
 @app.get("/health", tags=["Health"])
@@ -77,6 +79,10 @@ async def health_check():
     )
 
 
+# Metrics endpoint (from health.py router)
+# Note: /metrics is already included in health.router
+
+
 # Root endpoint
 @app.get("/", tags=["Root"])
 async def root():
@@ -86,6 +92,7 @@ async def root():
         "version": "1.0.0",
         "docs": "/docs",
         "health": "/health",
+        "metrics": "/metrics",
     }
 
 
@@ -101,20 +108,7 @@ async def global_exception_handler(request, exc):
             "detail": str(exc) if app.debug else "An unexpected error occurred",
         }
     )
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Handle startup and shutdown events"""
-    logger.info("Starting Graduated Autonomy Engine...")
-    
-    # Create database tables if they don't exist
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("✅ Database tables created/verified")
-    
-    yield
-    
-    logger.info("Shutting down Graduated Autonomy Engine...")
-    await engine.dispose()
+
 
 if __name__ == "__main__":
     import uvicorn
