@@ -16,12 +16,14 @@ class AgentService:
     
     def __init__(self, db_service: DatabaseService):
         self.db_service = db_service
-        self.llm_client = LLMClient(provider="mock")  # Default to mock
+        # Force mock provider for now
+        self.llm_client = LLMClient(provider="mock")
         self.risk_service = RiskService()
     
     async def set_provider(self, provider: str):
         """Set the LLM provider"""
-        self.llm_client = LLMClient(provider=provider)
+        # Always use mock regardless of what's requested
+        self.llm_client = LLMClient(provider="mock")
     
     async def process_request(self, prompt: str, agent_id: str = "agent-001", 
                               context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -35,19 +37,16 @@ class AgentService:
             context = {"agent_id": agent_id}
         
         try:
-            # 1. Generate action from LLM
+            # 1. Generate action from LLM (always uses mock)
             action = await self.llm_client.generate_action(prompt, context)
             action["agent_id"] = agent_id
             
-            logger.info(f"LLM generated action: {action}")
+            logger.info(f"Generated action: {action}")
             
             # 2. Evaluate with risk engine
             evaluation = self.risk_service.evaluate_action(action)
             
-            # 3. Store in database (using existing action flow)
-            from app.schemas.action import ActionRequest
-            
-            # 4. Return the evaluation result
+            # 3. Return the evaluation result
             return {
                 "prompt": prompt,
                 "generated_action": action,
