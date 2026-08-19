@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 import logging
+from typing import Optional
 
 from app.database import get_db
 from app.services.agent_service import AgentService
@@ -22,7 +23,7 @@ class AgentRequest(BaseModel):
     """Natural language agent request"""
     prompt: str
     agent_id: str = "agent-001"
-    provider: str = "mock"  # mock, groq, ollama
+    provider: str = "mock"
 
 
 class AgentResponse(BaseModel):
@@ -35,28 +36,23 @@ class AgentResponse(BaseModel):
     message: str
     requires_confirmation: bool
     requires_review: bool
-    action_id: str = None
-    review_id: str = None
+    action_id: str
+    review_id: Optional[str] = None  # <- Fixed
 
 
 @router.post("/chat", response_model=AgentResponse)
 async def chat_with_agent(
     request: AgentRequest,
     session: AsyncSession = Depends(get_db),
-    api_key: str = Depends(get_current_api_key)  # Add API key auth
+    api_key: str = Depends(get_current_api_key)
 ):
     """
     Chat with an AI agent via natural language.
-    The agent generates an action, which is then governed by the risk engine.
     """
     try:
         db_service = DatabaseService(session)
         agent_service = AgentService(db_service)
         action_executor = ActionExecutor()
-        
-        # Use mock provider by default (no API key needed)
-        provider = request.provider if request.provider else "mock"
-        logger.info(f"Using provider: {provider}")
         
         # Process the request
         result = await agent_service.process_request(
@@ -83,7 +79,7 @@ async def chat_with_agent(
             }
         )
         
-        # Create audit log for evaluation
+        # Create audit log
         audit_summary = agent_service.risk_service.get_human_readable_audit(action, evaluation)
         await db_service.create_audit_log(
             action_record.id,
@@ -95,11 +91,10 @@ async def chat_with_agent(
         
         # Handle based on autonomy level
         action_id = action_record.id
-        review_id = None
+        review_id = ""
         status = "processed"
         
         if evaluation["autonomy_level"] == "AUTONOMOUS":
-            # Execute immediately
             result = await action_executor.execute(action)
             await db_service.update_action_status(action_id, "executed", result)
             status = "executed"
@@ -112,12 +107,10 @@ async def chat_with_agent(
             )
             
         elif evaluation["autonomy_level"] == "CONFIRM":
-            # Wait for confirmation
             await db_service.update_action_status(action_id, "waiting_confirmation")
             status = "waiting_confirmation"
             
         else:  # REVIEW
-            # Create review record
             review = await db_service.create_review(action_id, action)
             review_id = review.id
             await db_service.update_action_status(action_id, "queued_for_review")
@@ -143,7 +136,7 @@ async def chat_with_agent(
             requires_confirmation=evaluation["requirements"]["requires_confirmation"],
             requires_review=evaluation["requirements"]["requires_review"],
             action_id=action_id,
-            review_id=review_id,
+            review_id=review_id if review_id else "",  # <- Ensure it's a string
         )
         
     except Exception as e:
