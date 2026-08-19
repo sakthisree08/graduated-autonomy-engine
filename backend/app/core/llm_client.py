@@ -4,7 +4,7 @@ LLM Client - Interface for various LLM providers
 
 import json
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 import httpx
 from app.config import settings
 
@@ -16,12 +16,10 @@ class LLMClient:
     
     def __init__(self, provider: str = "mock"):
         self.provider = provider.lower()
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self.client = httpx.AsyncClient(timeout=60.0)
         
     async def generate_action(self, prompt: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
-        """
-        Generate a structured action from a natural language prompt
-        """
+        """Generate a structured action from a natural language prompt"""
         if self.provider == "groq":
             return await self._generate_groq(prompt, context)
         elif self.provider == "ollama":
@@ -37,17 +35,23 @@ class LLMClient:
             client = Groq(api_key=settings.groq_api_key)
             
             system_prompt = """You are an AI action generator. Convert user requests into structured actions.
-            Respond with a JSON object containing:
+            Respond with ONLY a JSON object containing:
             - operation: the action type (read, update, delete, bulk_delete, create)
             - target_table: the target resource
-            - condition: the condition (optional)
+            - condition: the condition (optional, use '=' syntax)
             - record_count: estimated number of records affected
             - data_category: category of data (customer, pii, financial, internal, public)
             - confidence: your confidence score (0.0 to 1.0)
-            - parameters: any additional parameters
+            - parameters: any additional parameters as an object
             
-            Example:
-            User: "Update the email of customer with ID 10"
+            Examples:
+            User: "Read customer with ID 10"
+            Response: {"operation": "read", "target_table": "customers", "condition": "id = 10", "record_count": 1, "data_category": "customer", "confidence": 0.9, "parameters": {}}
+            
+            User: "Delete all customer records from India"
+            Response: {"operation": "bulk_delete", "target_table": "customers", "condition": "country = 'India'", "record_count": 10000, "data_category": "customer", "confidence": 0.8, "parameters": {}}
+            
+            User: "Update email for customer ID 10"
             Response: {"operation": "update", "target_table": "customers", "condition": "id = 10", "record_count": 1, "data_category": "customer", "confidence": 0.9, "parameters": {"set": {"email": "new@email.com"}}}
             """
             
@@ -58,15 +62,25 @@ class LLMClient:
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
-                max_tokens=500,
-                response_format={"type": "json_object"}
+                max_tokens=300,
             )
             
-            result = json.loads(response.choices[0].message.content)
+            content = response.choices[0].message.content
+            # Clean response (remove markdown code blocks if present)
+            content = content.strip()
+            if content.startswith('```json'):
+                content = content[7:]
+            if content.startswith('```'):
+                content = content[3:]
+            if content.endswith('```'):
+                content = content[:-3]
+            
+            result = json.loads(content)
             result["llm_confidence"] = result.get("confidence", 0.7)
-            result["validation_score"] = 0.8  # System validation score
+            result["validation_score"] = 0.8
             result["agent_id"] = context.get("agent_id", "llm-agent") if context else "llm-agent"
             
+            logger.info(f"Groq generated action: {result}")
             return result
             
         except Exception as e:
@@ -77,7 +91,7 @@ class LLMClient:
         """Generate action using Ollama (local)"""
         try:
             system_prompt = """You are an AI action generator. Convert user requests into structured actions.
-            Respond with a JSON object containing:
+            Respond with ONLY a JSON object containing:
             - operation: the action type (read, update, delete, bulk_delete, create)
             - target_table: the target resource
             - condition: the condition (optional)
@@ -91,13 +105,22 @@ class LLMClient:
                 f"{settings.ollama_url}/api/generate",
                 json={
                     "model": "llama2",
-                    "prompt": f"{system_prompt}\n\nUser: {prompt}\n\nResponse (JSON only):",
+                    "prompt": f"{system_prompt}\n\nUser: {prompt}\n\nResponse (JSON only, no explanation):",
                     "stream": False,
                     "temperature": 0.3,
                 }
             )
             
-            result = json.loads(response.json()["response"])
+            content = response.json()["response"]
+            content = content.strip()
+            if content.startswith('```json'):
+                content = content[7:]
+            if content.startswith('```'):
+                content = content[3:]
+            if content.endswith('```'):
+                content = content[:-3]
+            
+            result = json.loads(content)
             result["llm_confidence"] = result.get("confidence", 0.7)
             result["validation_score"] = 0.8
             result["agent_id"] = context.get("agent_id", "llm-agent") if context else "llm-agent"
@@ -112,8 +135,7 @@ class LLMClient:
         """Mock generation for testing"""
         prompt_lower = prompt.lower()
         
-        # Simple intent detection
-        if "delete" in prompt_lower and "all" in prompt_lower:
+        if "delete all" in prompt_lower or "delete every" in prompt_lower:
             return {
                 "operation": "bulk_delete",
                 "target_table": "customers",
@@ -138,6 +160,9 @@ class LLMClient:
                 "parameters": {}
             }
         elif "update" in prompt_lower:
+            import re
+            email_match = re.search(r'[\w\.-]+@[\w\.-]+\.\w+', prompt_lower)
+            email = email_match.group(0) if email_match else "new@email.com"
             return {
                 "operation": "update",
                 "target_table": "customers",
@@ -147,7 +172,7 @@ class LLMClient:
                 "llm_confidence": 0.8,
                 "validation_score": 0.8,
                 "agent_id": context.get("agent_id", "llm-agent") if context else "llm-agent",
-                "parameters": {"set": {"email": "new@email.com"}}
+                "parameters": {"set": {"email": email}}
             }
         elif "read" in prompt_lower or "get" in prompt_lower:
             return {
