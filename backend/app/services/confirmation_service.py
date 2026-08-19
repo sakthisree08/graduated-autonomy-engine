@@ -5,7 +5,7 @@ Confirmation Service - Handles medium-risk action confirmations
 import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
-
+from app.services.calibration_service import CalibrationService
 from app.core.action_executor import ActionExecutor
 from app.services.db_service import DatabaseService
 
@@ -56,6 +56,9 @@ class ConfirmationService:
                 "status": "error"
             }
         
+        # Initialize calibration service
+        cal_service = CalibrationService(self.db_service.session)
+        
         if confirm:
             # User confirmed - execute the action
             action_dict = {
@@ -91,6 +94,9 @@ class ConfirmationService:
                 }
             )
             
+            # ✅ Record decision for calibration (BEFORE commit)
+            await cal_service.record_decision(action.operation, "confirm")
+            
             await self.db_service.session.commit()
             
             return {
@@ -119,6 +125,9 @@ class ConfirmationService:
                     "comment": comment
                 }
             )
+            
+            # ✅ Record decision for calibration (BEFORE commit)
+            await cal_service.record_decision(action.operation, "reject")
             
             await self.db_service.session.commit()
             
