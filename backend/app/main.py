@@ -10,12 +10,12 @@ from fastapi.responses import JSONResponse
 
 from app.database import engine, Base
 from app.api.routes import actions, reviews, audit, health, agent, keys, calibration
-from app.core.security import get_current_api_key, check_rate_limit
-from app.core.logging_config import setup_logging
-from app.core.middleware import MonitoringMiddleware
 
-# Setup logging
-setup_logging(log_level="INFO")
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 
@@ -42,9 +42,6 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
-
-# Add monitoring middleware
-app.add_middleware(MonitoringMiddleware)
 
 # Configure CORS
 app.add_middleware(
@@ -79,10 +76,6 @@ async def health_check():
     )
 
 
-# Metrics endpoint (from health.py router)
-# Note: /metrics is already included in health.router
-
-
 # Root endpoint
 @app.get("/", tags=["Root"])
 async def root():
@@ -92,7 +85,6 @@ async def root():
         "version": "1.0.0",
         "docs": "/docs",
         "health": "/health",
-        "metrics": "/metrics",
     }
 
 
