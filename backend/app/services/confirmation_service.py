@@ -27,116 +27,122 @@ class ConfirmationService:
                                    user_id: str, comment: Optional[str] = None) -> Dict[str, Any]:
         """
         Process a confirmation decision
-        
-        Args:
-            action_id: ID of the action
-            confirm: True to confirm, False to reject
-            user_id: ID of the user confirming
-            comment: Optional comment
-        
-        Returns:
-            Dict with status and message
         """
-        # Get action
-        action = await self.db_service.get_action(action_id)
-        if not action:
-            return {"error": "Action not found", "status": "error"}
-        
-        # Check if action is waiting for confirmation
-        if action.status != "waiting_confirmation":
-            return {
-                "error": f"Action is not waiting for confirmation (current status: {action.status})",
-                "status": "error"
-            }
-        
-        # Check if autonomy level is CONFIRM
-        if action.autonomy_level != "CONFIRM":
-            return {
-                "error": f"Action requires {action.autonomy_level}, not CONFIRM",
-                "status": "error"
-            }
-        
-        # Initialize calibration service
-        cal_service = CalibrationService(self.db_service.session)
-        
-        if confirm:
-            # User confirmed - execute the action
-            action_dict = {
-                "operation": action.operation,
-                "target_table": action.target_table,
-                "condition": action.condition,
-                "record_count": action.record_count,
-                "parameters": action.parameters,
-                "agent_id": action.agent_id,
-            }
+        try:
+            # Get action
+            action = await self.db_service.get_action(action_id)
+            if not action:
+                return {"error": "Action not found", "status": "error"}
             
-            # Execute
-            result = await self.action_executor.execute(action_dict)
-            
-            # Update action status
-            await self.db_service.update_action_status(action.id, "executed", result)
-            
-            # Create audit log
-            await self.db_service.create_audit_log(
-                action.id,
-                "action_confirmed",
-                f"User {user_id} confirmed and executed: {result['message']}",
-                risk_breakdown={
-                    "reversibility": action.reversibility_score,
-                    "data_scope": action.data_scope_score,
-                    "regulatory": action.regulatory_score,
-                    "confidence": action.confidence_score,
-                },
-                event_data={
-                    "user_id": user_id,
-                    "comment": comment,
-                    "result": result
+            # Check if action is waiting for confirmation
+            if action.status != "waiting_confirmation":
+                return {
+                    "error": f"Action is not waiting for confirmation (current status: {action.status})",
+                    "status": "error"
                 }
-            )
             
-            # ✅ Record decision for calibration (BEFORE commit)
-            await cal_service.record_decision(action.operation, "confirm")
-            
-            await self.db_service.session.commit()
-            
-            return {
-                "status": "executed",
-                "message": result["message"],
-                "confirmed_by": user_id,
-                "confirmed_at": datetime.utcnow().isoformat()
-            }
-        else:
-            # User rejected
-            await self.db_service.update_action_status(action.id, "rejected")
-            
-            # Create audit log
-            await self.db_service.create_audit_log(
-                action.id,
-                "action_confirmation_rejected",
-                f"User {user_id} rejected the action: {comment or 'No comment'}",
-                risk_breakdown={
-                    "reversibility": action.reversibility_score,
-                    "data_scope": action.data_scope_score,
-                    "regulatory": action.regulatory_score,
-                    "confidence": action.confidence_score,
-                },
-                event_data={
-                    "user_id": user_id,
-                    "comment": comment
+            # Check if autonomy level is CONFIRM
+            if action.autonomy_level != "CONFIRM":
+                return {
+                    "error": f"Action requires {action.autonomy_level}, not CONFIRM",
+                    "status": "error"
                 }
-            )
             
-            # ✅ Record decision for calibration (BEFORE commit)
-            await cal_service.record_decision(action.operation, "reject")
-            
-            await self.db_service.session.commit()
-            
-            return {
-                "status": "rejected",
-                "message": "Action rejected by user",
-                "rejected_by": user_id,
-                "rejected_at": datetime.utcnow().isoformat()
-            }
+            if confirm:
+                # User confirmed - execute the action
+                action_dict = {
+                    "operation": action.operation,
+                    "target_table": action.target_table,
+                    "condition": action.condition,
+                    "record_count": action.record_count,
+                    "parameters": action.parameters,
+                    "agent_id": action.agent_id,
+                }
+                
+                # Execute
+                result = await self.action_executor.execute(action_dict)
+                
+                # Update action status
+                await self.db_service.update_action_status(action.id, "executed", result)
+                
+                # Create audit log
+                await self.db_service.create_audit_log(
+                    action.id,
+                    "action_confirmed",
+                    f"User {user_id} confirmed and executed: {result['message']}",
+                    risk_breakdown={
+                        "reversibility": action.reversibility_score,
+                        "data_scope": action.data_scope_score,
+                        "regulatory": action.regulatory_score,
+                        "confidence": action.confidence_score,
+                    },
+                    event_data={
+                        "user_id": user_id,
+                        "comment": comment,
+                        "result": result
+                    }
+                )
+                
+                # Record decision for calibration (BEFORE commit)
+                try:
+                    cal_service = CalibrationService(self.db_service.session)
+                    await cal_service.record_decision(action.operation, "confirm")
+                    logger.info(f"✅ Calibration recorded for {action.operation}")
+                except Exception as cal_error:
+                    logger.error(f"❌ Calibration recording failed (continuing): {str(cal_error)}")
+                    # Don't fail the whole operation - just log the error
+                
+                await self.db_service.session.commit()
+                
+                return {
+                    "status": "executed",
+                    "message": result["message"],
+                    "confirmed_by": user_id,
+                    "confirmed_at": datetime.utcnow().isoformat()
+                }
+            else:
+                # User rejected
+                await self.db_service.update_action_status(action.id, "rejected")
+                
+                # Create audit log
+                await self.db_service.create_audit_log(
+                    action.id,
+                    "action_confirmation_rejected",
+                    f"User {user_id} rejected the action: {comment or 'No comment'}",
+                    risk_breakdown={
+                        "reversibility": action.reversibility_score,
+                        "data_scope": action.data_scope_score,
+                        "regulatory": action.regulatory_score,
+                        "confidence": action.confidence_score,
+                    },
+                    event_data={
+                        "user_id": user_id,
+                        "comment": comment
+                    }
+                )
+                
+                # Record decision for calibration (BEFORE commit)
+                try:
+                    cal_service = CalibrationService(self.db_service.session)
+                    await cal_service.record_decision(action.operation, "reject")
+                    logger.info(f"✅ Calibration recorded for {action.operation}")
+                except Exception as cal_error:
+                    logger.error(f"❌ Calibration recording failed (continuing): {str(cal_error)}")
+                    # Don't fail the whole operation - just log the error
+                
+                await self.db_service.session.commit()
+                
+                return {
+                    "status": "rejected",
+                    "message": "Action rejected by user",
+                    "rejected_by": user_id,
+                    "rejected_at": datetime.utcnow().isoformat()
+                }
+        
+        except Exception as e:
+            logger.error(f"❌ Error in process_confirmation: {str(e)}", exc_info=True)
+            await self.db_service.session.rollback()
+            return {"error": str(e), "status": "error"}
     
     async def get_confirmation_preview(self, action_id: str) -> Optional[Dict[str, Any]]:
         """Get a preview of an action waiting for confirmation"""
