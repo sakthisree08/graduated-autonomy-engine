@@ -95,7 +95,8 @@ async def evaluate_action(
             )
             
         elif evaluation["autonomy_level"] == "CONFIRM":
-            # Wait for confirmation
+            # Wait for confirmation - UPDATE THE STATUS!
+            await db_service.update_action_status(action.id, "waiting_confirmation")
             response.status = "waiting_confirmation"
             response.preview_data = {
                 "operation": action_dict.get("operation"),
