@@ -31,8 +31,8 @@ async def metrics():
             content=get_metrics(),
             media_type="text/plain"
         )
-    except ImportError:
+    except ImportError as e:
         return PlainTextResponse(
-            content="# No metrics available",
+            content=f"# Metrics not available: {str(e)}",
             media_type="text/plain"
         )
