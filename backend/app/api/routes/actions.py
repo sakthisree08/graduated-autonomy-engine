@@ -7,7 +7,6 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Security
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
-from app.core.security import get_current_api_key, check_rate_limit
 
 from app.database import get_db
 from app.schemas.action import ActionRequest, ActionResponse, ConfirmRequest
@@ -28,7 +27,7 @@ action_executor = ActionExecutor()
 async def evaluate_action(
     request: ActionRequest,
     session: AsyncSession = Depends(get_db),
-    api_key: str = Depends(check_rate_limit)  # ← Add security + rate limiting
+    api_key: str = Depends(check_rate_limit)
 ):
     """
     Evaluate an agent action and determine autonomy level.
@@ -128,7 +127,7 @@ async def confirm_action(
     action_id: str,
     request: ConfirmRequest,
     session: AsyncSession = Depends(get_db),
-    api_key: str = Depends(check_rate_limit)  # ← Add security + rate limiting
+    api_key: str = Depends(check_rate_limit)
 ):
     """
     Confirm or reject an action (for medium-risk actions).
@@ -138,6 +137,23 @@ async def confirm_action(
     confirmation_service = ConfirmationService(db_service)
     
     try:
+        logger.info(f"🔍 Confirming action: {action_id}")
+        
+        # Get the action first to check status
+        action = await db_service.get_action(action_id)
+        if not action:
+            raise HTTPException(status_code=404, detail="Action not found")
+        
+        logger.info(f"📊 Action status: {action.status}, autonomy: {action.autonomy_level}")
+        
+        # Check if action is waiting for confirmation
+        if action.status != "waiting_confirmation":
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Action is not waiting for confirmation (current status: {action.status})"
+            )
+        
+        # Process confirmation
         result = await confirmation_service.process_confirmation(
             action_id=action_id,
             confirm=request.confirm,
@@ -149,10 +165,13 @@ async def confirm_action(
             raise HTTPException(status_code=400, detail=result["error"])
         
         await session.commit()
+        logger.info(f"✅ Confirmation successful for action: {action_id}")
         return result
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error confirming action: {str(e)}", exc_info=True)
+        logger.error(f"❌ Error confirming action: {str(e)}", exc_info=True)
         await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -164,7 +183,7 @@ async def confirm_action(
 async def get_pending_confirmations(
     agent_id: Optional[str] = None,
     session: AsyncSession = Depends(get_db),
-    api_key: str = Depends(get_current_api_key)  # ← Add security (no rate limit for GET)
+    api_key: str = Depends(get_current_api_key)
 ):
     """
     Get all actions waiting for confirmation.
@@ -192,7 +211,7 @@ async def get_pending_confirmations(
 async def get_action_preview(
     action_id: str,
     session: AsyncSession = Depends(get_db),
-    api_key: str = Depends(get_current_api_key)  # ← Add security
+    api_key: str = Depends(get_current_api_key)
 ):
     """
     Get a preview of an action waiting for confirmation.
