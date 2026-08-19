@@ -1,12 +1,13 @@
 """
-Health check endpoint
+Health check and metrics endpoints
 """
 
-from fastapi import APIRouter, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, status, Response
+from fastapi.responses import JSONResponse, PlainTextResponse
 from datetime import datetime
 
 router = APIRouter(tags=["Health"])
+
 
 @router.get("/health")
 async def health_check():
@@ -19,3 +20,19 @@ async def health_check():
             "service": "graduated-autonomy-engine",
         }
     )
+
+
+@router.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint"""
+    try:
+        from app.core.metrics import get_metrics
+        return PlainTextResponse(
+            content=get_metrics(),
+            media_type="text/plain"
+        )
+    except ImportError:
+        return PlainTextResponse(
+            content="# No metrics available",
+            media_type="text/plain"
+        )
