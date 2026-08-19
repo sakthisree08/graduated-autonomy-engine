@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "graduated-autonomy-engine"
+version = "1.0.0"
+description = "AI governance system with graduated autonomy"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi==0.104.1",
+    "uvicorn[standard]==0.24.0",
+    "sqlalchemy==2.0.23",
+    "aiosqlite==0.19.0",
+    "pydantic==2.5.0",
+    "pydantic-settings==2.1.0",
+    "python-dotenv==1.0.0",
+    "alembic==1.12.1",
+    "httpx==0.25.2",
+    "python-multipart==0.0.6",
+    "passlib==1.7.4",
+    "python-jose==3.3.0"
+]

@@ -184,3 +184,29 @@ async def reject_review(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+    from app.core.security import get_current_api_key, check_rate_limit
+
+@router.get("/pending")
+async def get_pending_reviews(
+    session: AsyncSession = Depends(get_db),
+    api_key: str = Depends(get_current_api_key)  # ← Add security
+):
+    # ... rest of code
+
+@router.post("/{review_id}/approve")
+async def approve_review(
+    review_id: str,
+    request: ReviewRequest,
+    session: AsyncSession = Depends(get_db),
+    api_key: str = Depends(check_rate_limit)  # ← Add security + rate limiting
+):
+    # ... rest of code
+
+@router.post("/{review_id}/reject")
+async def reject_review(
+    review_id: str,
+    request: ReviewRequest,
+    session: AsyncSession = Depends(get_db),
+    api_key: str = Depends(check_rate_limit)  # ← Add security + rate limiting
+):
+    # ... rest of code

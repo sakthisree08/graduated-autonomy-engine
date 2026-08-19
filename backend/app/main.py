@@ -7,7 +7,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-
+from app.api.routes import keys
+from app.core.security import get_current_api_key, check_rate_limit
+from fastapi import Depends
 from app.database import engine, Base
 from app.api.routes import actions, reviews, audit, health, agent
 
@@ -57,6 +59,7 @@ app.include_router(actions.router)
 app.include_router(reviews.router)
 app.include_router(audit.router)
 app.include_router(health.router)
+app.include_router(keys.router)
 app.include_router(agent.router)
 
 # Health check endpoint
@@ -82,7 +85,13 @@ async def root():
         "docs": "/docs",
         "health": "/health",
     }
-
+@router.post("/evaluate")
+async def evaluate_action(
+    request: ActionRequest,
+    session: AsyncSession = Depends(get_db),
+    api_key: str = Depends(get_current_api_key)  # <- Add this
+):
+    # ... rest of code
 # Error handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
