@@ -23,6 +23,22 @@ class RiskService:
         scores = breakdown["scores"]
         total_risk = breakdown["total_risk"]
         
+        # Apply calibration adjustment if available
+        if self.session:
+            try:
+                from app.services.calibration_service import CalibrationService
+                cal_service = CalibrationService(self.session)
+                operation = action.get("operation", "unknown")
+                
+                # Get adjustment
+                adjustment = cal_service.get_adjustment_sync(operation)
+                if adjustment != 0:
+                    total_risk = total_risk + adjustment
+                    total_risk = max(0, min(100, total_risk))
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Calibration adjustment failed: {e}")
+        
         # Map to autonomy level
         level = self.mapper.map_to_autonomy(total_risk)
         requirements = self.mapper.get_action_requirements(level)
@@ -49,46 +65,6 @@ class RiskService:
         
         return result
     
-    async def evaluate_action_with_calibration(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Evaluate action with calibration adjustment
-        """
-        # Get base risk
-        result = self.evaluate_action(action)
-        
-        # Apply calibration if session is available
-        if self.session:
-            try:
-                from app.services.calibration_service import CalibrationService
-                cal_service = CalibrationService(self.session)
-                operation = action.get("operation", "unknown")
-                
-                # Store base risk for reference
-                result["base_risk"] = result["total_risk"]
-                
-                # Apply adjustment
-                adjusted_risk = await cal_service.apply_adjustment(
-                    operation, result["total_risk"]
-                )
-                result["total_risk"] = adjusted_risk
-                result["adjustment"] = await cal_service.get_adjustment(operation)
-                
-                # Recalculate autonomy level with adjusted risk
-                adjusted_level = self.mapper.map_to_autonomy(adjusted_risk)
-                result["autonomy_level"] = adjusted_level.value
-                result["adjusted_autonomy"] = True
-                
-                # Update requirements and description
-                result["requirements"] = self.mapper.get_action_requirements(adjusted_level)
-                result["description"] = self.mapper.get_risk_level_description(adjusted_risk)
-                
-            except Exception as e:
-                # If calibration fails, log but continue with base risk
-                import logging
-                logging.getLogger(__name__).warning(f"Calibration failed: {e}")
-        
-        return result
-    
     def get_human_readable_audit(self, action: Dict[str, Any], 
                                  evaluation: Dict[str, Any]) -> str:
         """
@@ -97,11 +73,6 @@ class RiskService:
         scores = evaluation["risk_breakdown"]
         total = evaluation["total_risk"]
         level = evaluation["autonomy_level"]
-        
-        # Check if calibration was applied
-        calibration_note = ""
-        if evaluation.get("adjusted_autonomy", False):
-            calibration_note = f"\n  Calibration Applied: Yes (adjustment: {evaluation.get('adjustment', 0)})"
         
         audit_text = f"""
 Action: {action.get('operation', 'unknown').upper()} 
@@ -114,7 +85,7 @@ Risk Breakdown:
   Regulatory:    {scores['regulatory']}/20
   Confidence:    {scores['confidence']}/25
   ─────────────────
-  Total Risk:    {total}/100{calibration_note}
+  Total Risk:    {total}/100
 
 Decision: {level}
 Reason: {evaluation['description']}
