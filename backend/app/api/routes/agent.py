@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 import logging
-from datetime import datetime
 
 from app.database import get_db
 from app.services.agent_service import AgentService
@@ -53,9 +52,9 @@ async def chat_with_agent(
         agent_service = AgentService(db_service)
         action_executor = ActionExecutor()
         
-        # Set the LLM provider
-        if request.provider != "mock":
-            await agent_service.set_provider(request.provider)
+        # Use mock provider by default (no API key needed)
+        # If user wants a different provider, use the one from request
+        provider = request.provider if request.provider != "mock" else "mock"
         
         # Process the request
         result = await agent_service.process_request(
