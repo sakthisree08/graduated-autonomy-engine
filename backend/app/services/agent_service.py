@@ -34,20 +34,28 @@ class AgentService:
         if context is None:
             context = {"agent_id": agent_id}
         
-        # 1. Generate action from LLM
-        action = await self.llm_client.generate_action(prompt, context)
-        action["agent_id"] = agent_id
-        
-        logger.info(f"LLM generated action: {action}")
-        
-        # 2. Evaluate with risk engine
-        evaluation = self.risk_service.evaluate_action(action)
-        
-        # 3. Return the evaluation result
-        return {
-            "prompt": prompt,
-            "generated_action": action,
-            "risk_evaluation": evaluation,
-            "status": evaluation["autonomy_level"],
-            "message": evaluation["description"]
-        }
+        try:
+            # 1. Generate action from LLM
+            action = await self.llm_client.generate_action(prompt, context)
+            action["agent_id"] = agent_id
+            
+            logger.info(f"LLM generated action: {action}")
+            
+            # 2. Evaluate with risk engine
+            evaluation = self.risk_service.evaluate_action(action)
+            
+            # 3. Store in database (using existing action flow)
+            from app.schemas.action import ActionRequest
+            
+            # 4. Return the evaluation result
+            return {
+                "prompt": prompt,
+                "generated_action": action,
+                "risk_evaluation": evaluation,
+                "status": evaluation["autonomy_level"],
+                "message": evaluation["description"]
+            }
+            
+        except Exception as e:
+            logger.error(f"Error processing request: {str(e)}", exc_info=True)
+            raise

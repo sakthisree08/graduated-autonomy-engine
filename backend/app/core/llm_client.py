@@ -17,10 +17,12 @@ class LLMClient:
     def __init__(self, provider: str = "mock"):
         self.provider = provider.lower()
         self.client = httpx.AsyncClient(timeout=60.0)
-        
+    
     async def generate_action(self, prompt: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Generate a structured action from a natural language prompt"""
-        if self.provider == "groq":
+        if self.provider == "mock":
+            return await self._generate_mock(prompt, context)
+        elif self.provider == "groq":
             return await self._generate_groq(prompt, context)
         elif self.provider == "ollama":
             return await self._generate_ollama(prompt, context)
@@ -38,7 +40,7 @@ class LLMClient:
             Respond with ONLY a JSON object containing:
             - operation: the action type (read, update, delete, bulk_delete, create)
             - target_table: the target resource
-            - condition: the condition (optional, use '=' syntax)
+            - condition: the condition (optional)
             - record_count: estimated number of records affected
             - data_category: category of data (customer, pii, financial, internal, public)
             - confidence: your confidence score (0.0 to 1.0)
@@ -66,7 +68,6 @@ class LLMClient:
             )
             
             content = response.choices[0].message.content
-            # Clean response (remove markdown code blocks if present)
             content = content.strip()
             if content.startswith('```json'):
                 content = content[7:]
@@ -85,7 +86,7 @@ class LLMClient:
             
         except Exception as e:
             logger.error(f"Groq API error: {str(e)}")
-            return self._generate_mock(prompt, context)
+            return await self._generate_mock(prompt, context)
     
     async def _generate_ollama(self, prompt: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Generate action using Ollama (local)"""
@@ -129,7 +130,7 @@ class LLMClient:
             
         except Exception as e:
             logger.error(f"Ollama API error: {str(e)}")
-            return self._generate_mock(prompt, context)
+            return await self._generate_mock(prompt, context)
     
     async def _generate_mock(self, prompt: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Mock generation for testing"""
