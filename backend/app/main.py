@@ -1,7 +1,7 @@
 """
 Graduated Autonomy Engine - Main Application
 """
-
+from app.api.routes import actions, reviews, audit, health, agent, keys, calibration
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, status
@@ -61,6 +61,7 @@ app.include_router(health.router)
 app.include_router(keys.router)
 app.include_router(agent.router)
 
+app.include_router(calibration.router)
 
 # Health check endpoint
 @app.get("/health", tags=["Health"])
@@ -100,7 +101,20 @@ async def global_exception_handler(request, exc):
             "detail": str(exc) if app.debug else "An unexpected error occurred",
         }
     )
-
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle startup and shutdown events"""
+    logger.info("Starting Graduated Autonomy Engine...")
+    
+    # Create database tables if they don't exist
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("✅ Database tables created/verified")
+    
+    yield
+    
+    logger.info("Shutting down Graduated Autonomy Engine...")
+    await engine.dispose()
 
 if __name__ == "__main__":
     import uvicorn
