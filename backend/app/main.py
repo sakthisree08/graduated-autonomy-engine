@@ -7,11 +7,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from app.api.routes import keys
-from app.core.security import get_current_api_key, check_rate_limit
-from fastapi import Depends
+
 from app.database import engine, Base
-from app.api.routes import actions, reviews, audit, health, agent
+from app.api.routes import actions, reviews, audit, health, agent, keys
+from app.core.security import get_current_api_key, check_rate_limit
 
 # Configure logging
 logging.basicConfig(
@@ -62,6 +61,7 @@ app.include_router(health.router)
 app.include_router(keys.router)
 app.include_router(agent.router)
 
+
 # Health check endpoint
 @app.get("/health", tags=["Health"])
 async def health_check():
@@ -75,6 +75,7 @@ async def health_check():
         }
     )
 
+
 # Root endpoint
 @app.get("/", tags=["Root"])
 async def root():
@@ -85,13 +86,8 @@ async def root():
         "docs": "/docs",
         "health": "/health",
     }
-@router.post("/evaluate")
-async def evaluate_action(
-    request: ActionRequest,
-    session: AsyncSession = Depends(get_db),
-    api_key: str = Depends(get_current_api_key)  # <- Add this
-):
-    # ... rest of code
+
+
 # Error handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
@@ -104,6 +100,7 @@ async def global_exception_handler(request, exc):
             "detail": str(exc) if app.debug else "An unexpected error occurred",
         }
     )
+
 
 if __name__ == "__main__":
     import uvicorn
