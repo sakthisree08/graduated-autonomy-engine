@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Security
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
-
+from app.core.metrics import track_action, track_risk
 from app.database import get_db
 from app.schemas.action import ActionRequest, ActionResponse, ConfirmRequest
 from app.services.risk_service import RiskService
@@ -110,7 +110,9 @@ async def evaluate_action(
             preview_data=None,
             review_id=None,
         )
-        
+        # Track metrics
+        track_action(evaluation["autonomy_level"], response.status)
+        track_risk(action_dict.get("operation", "unknown"), evaluation["total_risk"])
         if evaluation["autonomy_level"] == "AUTONOMOUS":
             # Execute immediately
             result = await action_executor.execute(action_dict)
