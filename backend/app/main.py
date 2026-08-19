@@ -1,14 +1,15 @@
 """
 Graduated Autonomy Engine - Main Application
-An AI governance system that dynamically determines agent autonomy based on risk.
 """
-from app.api.routes import actions, reviews, audit, health, agent
+
 import logging
-from app.api.routes import actions, reviews, audit, health
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+from app.database import engine, Base
+from app.api.routes import actions, reviews, audit, health, agent
 
 # Configure logging
 logging.basicConfig(
@@ -17,12 +18,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle startup and shutdown events"""
     logger.info("Starting Graduated Autonomy Engine...")
+    
+    # Create database tables if they don't exist
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("✅ Database tables created/verified")
+    
     yield
+    
     logger.info("Shutting down Graduated Autonomy Engine...")
+    await engine.dispose()
+
 
 # Create FastAPI app
 app = FastAPI(
@@ -41,6 +52,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include routers
+app.include_router(actions.router)
+app.include_router(reviews.router)
+app.include_router(audit.router)
+app.include_router(health.router)
+app.include_router(agent.router)
+
 # Health check endpoint
 @app.get("/health", tags=["Health"])
 async def health_check():
@@ -53,12 +71,7 @@ async def health_check():
             "service": "graduated-autonomy-engine",
         }
     )
-# Include routers
-app.include_router(actions.router)
-app.include_router(reviews.router)
-app.include_router(audit.router)
-app.include_router(health.router)
-app.include_router(agent.router)
+
 # Root endpoint
 @app.get("/", tags=["Root"])
 async def root():

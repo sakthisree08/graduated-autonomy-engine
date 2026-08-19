@@ -1,14 +1,16 @@
 """
-Database configuration
+Database configuration and session management
 """
 
 import os
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
+from sqlalchemy import MetaData
 
+# Create base class for models
 Base = declarative_base()
 
-# Use /tmp for Render (writable) or local directory
+# Determine database path
 if os.environ.get("RENDER"):
     # On Render, use /tmp directory (writable)
     db_path = "/tmp/graduated_autonomy.db"
@@ -18,18 +20,24 @@ else:
 
 DATABASE_URL = f"sqlite+aiosqlite:///{db_path}"
 
+# Create async engine
 engine = create_async_engine(
     DATABASE_URL,
-    echo=True if os.environ.get("DEBUG", "False") == "True" else False,
+    echo=True,  # Set to False in production
 )
 
+# Create async session factory
 AsyncSessionLocal = async_sessionmaker(
     engine,
     class_=AsyncSession,
     expire_on_commit=False,
+    autocommit=False,
+    autoflush=False,
 )
 
-async def get_db():
+# Dependency to get database session
+async def get_db() -> AsyncSession:
+    """Get database session for dependency injection"""
     async with AsyncSessionLocal() as session:
         try:
             yield session
