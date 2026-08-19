@@ -15,6 +15,7 @@ from app.services.db_service import DatabaseService
 from app.services.confirmation_service import ConfirmationService
 from app.core.action_executor import ActionExecutor
 from app.core.security import get_current_api_key, check_rate_limit
+from app.core.autonomy_mapper import AutonomyMapper
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,34 @@ async def evaluate_action(
         action_dict = request.model_dump()
         evaluation = risk_service.evaluate_action(action_dict)
         
-        # 3. Update action with risk scores
+        # 3. Apply calibration adjustment
+        try:
+            from app.services.calibration_service import CalibrationService
+            cal_service = CalibrationService(session)
+            operation = action_dict.get("operation", "unknown")
+            
+            # Get adjustment
+            adjustment = await cal_service.get_adjustment(operation)
+            if adjustment != 0:
+                # Apply adjustment to total risk
+                original_risk = evaluation["total_risk"]
+                adjusted_risk = max(0, min(100, original_risk + adjustment))
+                evaluation["total_risk"] = adjusted_risk
+                evaluation["original_risk"] = original_risk
+                evaluation["adjustment"] = adjustment
+                
+                # Recalculate autonomy level with adjusted risk
+                mapper = AutonomyMapper()
+                adjusted_level = mapper.map_to_autonomy(adjusted_risk)
+                evaluation["autonomy_level"] = adjusted_level.value
+                evaluation["description"] = mapper.get_risk_level_description(adjusted_risk)
+                evaluation["requirements"] = mapper.get_action_requirements(adjusted_level)
+                
+                logger.info(f"✅ Applied calibration adjustment: {adjustment} for {operation} (risk: {original_risk} → {adjusted_risk})")
+        except Exception as cal_error:
+            logger.warning(f"Calibration adjustment failed: {cal_error}")
+        
+        # 4. Update action with risk scores (use adjusted values)
         await db_service.update_action_risk(
             action.id,
             {
@@ -56,7 +84,7 @@ async def evaluate_action(
             }
         )
         
-        # 4. Create audit log
+        # 5. Create audit log
         audit_summary = risk_service.get_human_readable_audit(action_dict, evaluation)
         await db_service.create_audit_log(
             action.id,
@@ -66,7 +94,7 @@ async def evaluate_action(
             {"action": action_dict}
         )
         
-        # 5. Handle based on autonomy level
+        # 6. Handle based on autonomy level
         response = ActionResponse(
             action_id=action.id,
             total_risk=evaluation["total_risk"],
@@ -95,7 +123,7 @@ async def evaluate_action(
             )
             
         elif evaluation["autonomy_level"] == "CONFIRM":
-            # Wait for confirmation - UPDATE THE STATUS!
+            # Wait for confirmation
             await db_service.update_action_status(action.id, "waiting_confirmation")
             response.status = "waiting_confirmation"
             response.preview_data = {
