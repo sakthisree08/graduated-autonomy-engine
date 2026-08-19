@@ -11,6 +11,7 @@ from app.database import get_db
 from app.services.db_service import DatabaseService
 from app.core.action_executor import ActionExecutor
 from app.schemas.action import ReviewRequest
+from app.core.security import get_current_api_key, check_rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +21,10 @@ action_executor = ActionExecutor()
 
 @router.get("/pending")
 async def get_pending_reviews(
-    session: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_db),
+    api_key: str = Depends(get_current_api_key)  # ← Add security
 ):
-    """Get all pending reviews"""
+    """Get all pending reviews. Requires valid API key."""
     try:
         db_service = DatabaseService(session)
         reviews = await db_service.get_pending_reviews()
@@ -50,9 +52,10 @@ async def get_pending_reviews(
 async def approve_review(
     review_id: str,
     request: ReviewRequest,
-    session: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_db),
+    api_key: str = Depends(check_rate_limit)  # ← Add security + rate limiting
 ):
-    """Approve a pending review"""
+    """Approve a pending review. Requires valid API key."""
     try:
         db_service = DatabaseService(session)
         
@@ -89,7 +92,7 @@ async def approve_review(
             "reviewer": request.reviewer,
             "decision": "approve",
             "comment": request.comment,
-            "reviewed_at": now,  # datetime object
+            "reviewed_at": now,
         })
         
         # Update action
@@ -127,9 +130,10 @@ async def approve_review(
 async def reject_review(
     review_id: str,
     request: ReviewRequest,
-    session: AsyncSession = Depends(get_db)
+    session: AsyncSession = Depends(get_db),
+    api_key: str = Depends(check_rate_limit)  # ← Add security + rate limiting
 ):
-    """Reject a pending review"""
+    """Reject a pending review. Requires valid API key."""
     try:
         db_service = DatabaseService(session)
         
@@ -152,7 +156,7 @@ async def reject_review(
             "reviewer": request.reviewer,
             "decision": "reject",
             "comment": request.comment,
-            "reviewed_at": now,  # datetime object
+            "reviewed_at": now,
         })
         
         # Update action
@@ -184,29 +188,3 @@ async def reject_review(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
-    from app.core.security import get_current_api_key, check_rate_limit
-
-@router.get("/pending")
-async def get_pending_reviews(
-    session: AsyncSession = Depends(get_db),
-    api_key: str = Depends(get_current_api_key)  # ← Add security
-):
-    # ... rest of code
-
-@router.post("/{review_id}/approve")
-async def approve_review(
-    review_id: str,
-    request: ReviewRequest,
-    session: AsyncSession = Depends(get_db),
-    api_key: str = Depends(check_rate_limit)  # ← Add security + rate limiting
-):
-    # ... rest of code
-
-@router.post("/{review_id}/reject")
-async def reject_review(
-    review_id: str,
-    request: ReviewRequest,
-    session: AsyncSession = Depends(get_db),
-    api_key: str = Depends(check_rate_limit)  # ← Add security + rate limiting
-):
-    # ... rest of code

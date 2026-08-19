@@ -7,6 +7,7 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Security
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
+from app.core.security import get_current_api_key, check_rate_limit
 
 from app.database import get_db
 from app.schemas.action import ActionRequest, ActionResponse, ConfirmRequest
